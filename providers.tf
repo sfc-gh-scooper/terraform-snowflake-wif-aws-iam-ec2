@@ -8,7 +8,7 @@ terraform {
     }
     snowflake = {
       source  = "snowflakedb/snowflake"
-      version = "~> 2.6.0" # Pinned to current version from your lock file
+      version = "~> 2.13.0"
     }
   }
 }
@@ -31,6 +31,4 @@ provider "snowflake" {
   authenticator     = "SNOWFLAKE_JWT" # Requires private_key and corresponding public key setup
   private_key       = file(var.snowflake_private_key_path)
 
-  # Optional: Enable preview features if needed
-  preview_features_enabled = ["snowflake_current_account_datasource"]
 }

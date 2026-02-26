@@ -27,40 +27,24 @@ resource "snowflake_account_role" "wif_test_role" {
   comment = "Role for AWS→Snowflake WIF test user (Terraform-managed)"
 }
 
-# 2) Create the WIF service user via exact SQL (TYPE=SERVICE + WORKLOAD_IDENTITY)
-#    We use snowflake_execute because the snowflake_user resource does not yet
-#    expose WORKLOAD_IDENTITY/TYPE=SERVICE as first-class arguments.
-resource "snowflake_execute" "wif_user_create" {
-  # Ensure the role exists and the AWS role ARN is resolved first
-  depends_on = [
-    snowflake_account_role.wif_test_role
-  ]
+# 2) Create the WIF service user using the native snowflake_service_user resource
+resource "snowflake_service_user" "wif" {
+  name              = var.wif_user_name
+  default_role      = snowflake_account_role.wif_test_role.name
+  default_warehouse = var.wif_default_warehouse
+  comment           = "WIF service user (AWS role mapped) managed by Terraform"
 
-  # CREATE (idempotent), VERIFY (query), and DESTROY (revert)
-  # Note: LOGIN_NAME is not needed for WIF users - authentication is via WORKLOAD_IDENTITY
-  execute = <<SQL
-CREATE USER IF NOT EXISTS ${var.wif_user_name}
-  TYPE = SERVICE
-  DEFAULT_ROLE = ${snowflake_account_role.wif_test_role.name}
-  WORKLOAD_IDENTITY = (
-    TYPE = AWS
-    ARN  = '${local.wif_role_arn_effective}'
-  )
-  COMMENT = 'WIF service user (AWS role mapped) managed by Terraform';
-SQL
-
-  # Optional visibility during plan/apply
-  query = "SHOW USERS LIKE '${var.wif_user_name}';"
-
-  # Clean removal on destroy
-  revert = "DROP USER IF EXISTS ${var.wif_user_name};"
+  default_workload_identity {
+    aws {
+      arn = local.wif_role_arn_effective
+    }
+  }
 }
 
 # 3) Grant the WIF role to the WIF user
 resource "snowflake_grant_account_role" "wif_role_to_user" {
-  role_name  = snowflake_account_role.wif_test_role.name
-  user_name  = var.wif_user_name
-  depends_on = [snowflake_execute.wif_user_create]
+  role_name = snowflake_account_role.wif_test_role.name
+  user_name = snowflake_service_user.wif.name
 }
 
 # --- Optional: minimal usage grants so the user can run a quick query ---
